@@ -1,0 +1,69 @@
+import { NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import * as XLSX from 'xlsx';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
+
+export async function GET() {
+  try {
+    // 1. Ambil data leads dari Supabase
+    const { data: leads, error } = await supabase
+      .from('leads')
+      .select('phone_number, source, phone_series_searched, created_at')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (!leads || leads.length === 0) {
+      return NextResponse.json({ status: 'no_data', message: 'Belum ada data leads.' });
+    }
+
+    // 2. Format data untuk sheet Excel
+    const excelData = leads.map((item) => ({
+      'Nomor Customer': item.phone_number,
+      'Sumber Informasi': item.source || 'Belum Mengisi',
+      'Seri HP yang Dicari': item.phone_series_searched || 'Belum Diisi',
+      'Tanggal Masuk': new Date(item.created_at).toLocaleString('id-ID'),
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(excelData);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Laporan Leads');
+
+    // Convert workbook ke Buffer Base64
+    const excelBuffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    const base64Excel = excelBuffer.toString('base64');
+
+    // 3. Ambil nomor admin dari setting Supabase
+    const { data: adminSetting } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'admin_phone')
+      .single();
+
+    const adminPhone = adminSetting?.value;
+
+    if (adminPhone) {
+      // Kirim dokumen Excel via WhatsApp Gateway
+      await fetch('https://api.whatsapp-gateway.com/send-document', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          target: adminPhone,
+          filename: `Laporan_Mingguan_Leads_${Date.now()}.xlsx`,
+          file_base64: base64Excel,
+          caption: '📊 *LAPORAN MINGGUAN LEADS & REKAP SUMBER INFORMASI*',
+        }),
+      });
+    }
+
+    return NextResponse.json({ status: 'success', message: 'Laporan mingguan terkirim ke Admin' });
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 });
+  }
+}
