@@ -5,12 +5,40 @@ import { useState, useEffect } from 'react';
 export default function Home() {
   const [style, setStyle] = useState('Ramah, profesional, dan membantu.');
   const [instruction, setInstruction] = useState('Jawab pertanyaan pelanggan dengan singkat dan jelas.');
-  const [testInput, setTestInput] = useState('');
-  const [testOutput, setTestOutput] = useState('');
-  const [loading, setLoading] = useState(false);
   const [statusMsg, setStatusMsg] = useState('');
+  const [leads, setLeads] = useState<any[]>([]);
 
-  // Simpan Setting ke Supabase via API
+  // Auto-refresh data monitoring setiap 5 detik
+  const fetchLeads = async () => {
+    try {
+      const res = await fetch('/api/admin/leads');
+      const data = await res.json();
+      if (data.leads) setLeads(data.leads);
+    } catch (err) {
+      console.error('Gagal mengambil data monitoring', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchLeads();
+    const interval = setInterval(fetchLeads, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Toggle AI ON/OFF
+  const toggleAI = async (phoneNumber: string, currentStatus: boolean) => {
+    try {
+      await fetch('/api/admin/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone_number: phoneNumber, is_ai_active: !currentStatus }),
+      });
+      fetchLeads();
+    } catch (err) {
+      alert('Gagal mengubah status AI');
+    }
+  };
+
   const handleSave = async () => {
     setStatusMsg('Menyimpan...');
     try {
@@ -19,80 +47,93 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ style, instruction }),
       });
-      if (res.ok) {
-        setStatusMsg('✅ Instruksi berhasil disimpan!');
-      } else {
-        setStatusMsg('❌ Gagal menyimpan instruksi.');
-      }
+      if (res.ok) setStatusMsg('✅ Instruksi berhasil disimpan!');
+      else setStatusMsg('❌ Gagal menyimpan.');
     } catch (err) {
-      setStatusMsg('❌ Terjadi kesalahan jaringan.');
-    }
-  };
-
-  // Uji Coba AI
-  const handleTest = async () => {
-    if (!testInput) return;
-    setLoading(true);
-    setTestOutput('');
-    try {
-      const res = await fetch('/api/test-ai', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: testInput, style, instruction }),
-      });
-      const data = await res.json();
-      setTestOutput(data.reply || data.message || 'Tidak ada respon.');
-    } catch (err) {
-      setTestOutput('❌ Error koneksi ke AI.');
-    } finally {
-      setLoading(false);
+      setStatusMsg('❌ Kesalahan jaringan.');
     }
   };
 
   return (
     <div style={{ backgroundColor: '#f3f4f6', minHeight: '100vh', padding: '1.5rem', fontFamily: 'sans-serif', color: '#1f2937' }}>
-      <div style={{ maxWidth: '600px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      <div style={{ maxWidth: '800px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
         
         {/* Header */}
         <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', textAlign: 'center' }}>
           <h1 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: '#1e3a8a', margin: '0 0 0.5rem 0' }}>
             WA Bot AI Command Center
           </h1>
-          <p style={{ fontSize: '0.875rem', color: '#4b5563', margin: 0 }}>
-            Kelola instruksi, RAG Knowledge Base, dan Uji Coba AI
-          </p>
-          <span style={{ display: 'inline-block', marginTop: '0.75rem', backgroundColor: '#d1fae5', color: '#065f46', fontSize: '0.75rem', fontWeight: '600', padding: '4px 12px', borderRadius: '9999px' }}>
-            🟢 Supabase Connected
+          <span style={{ backgroundColor: '#d1fae5', color: '#065f46', fontSize: '0.75rem', fontWeight: '600', padding: '4px 12px', borderRadius: '9999px' }}>
+            🟢 Live Monitoring Active
           </span>
+        </div>
+
+        {/* Realtime Monitoring & Switch AI */}
+        <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
+          <h2 style={{ fontSize: '1rem', fontWeight: 'bold', color: '#1e3a8a', marginBottom: '1rem' }}>
+            📱 Monitoring Chat Customer Realtime
+          </h2>
+
+          {leads.length === 0 ? (
+            <p style={{ fontSize: '0.875rem', color: '#6b7280' }}>Belum ada obrolan masuk.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {leads.map((item) => (
+                <div key={item.id} style={{ border: '1px solid #e5e7eb', padding: '1rem', borderRadius: '8px', backgroundColor: '#f9fafb' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+                    <strong>📞 {item.phone_number}</strong>
+                    <button
+                      onClick={() => toggleAI(item.phone_number, item.is_ai_active)}
+                      style={{
+                        padding: '6px 12px',
+                        borderRadius: '6px',
+                        border: 'none',
+                        color: '#fff',
+                        fontWeight: 'bold',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer',
+                        backgroundColor: item.is_ai_active ? '#dc2626' : '#16a34a'
+                      }}
+                    >
+                      {item.is_ai_active ? '⏹️ Hentikan AI (Takeover)' : '▶️ Aktifkan AI'}
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', margin: '0.25rem 0', color: '#4b5563' }}>
+                    <strong>Sumber:</strong> {item.source || '-'} | <strong>Cari:</strong> {item.phone_series_searched || '-'}
+                  </p>
+                  <div style={{ fontSize: '0.875rem', marginTop: '0.5rem', padding: '0.5rem', backgroundColor: '#fff', borderRadius: '6px', border: '1px solid #f3f4f6' }}>
+                    <p style={{ margin: 0, color: '#1e40af' }}>💬 <strong>Customer:</strong> {item.last_message || '-'}</p>
+                    <p style={{ margin: '0.25rem 0 0 0', color: '#065f46' }}>🤖 <strong>AI:</strong> {item.last_reply || '-'}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* System Prompt Section */}
         <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
           <h2 style={{ fontSize: '1rem', fontWeight: 'bold', color: '#1e3a8a', marginBottom: '1rem' }}>
-            Cara AI Menjawab (System Prompt)
+            ⚙️ Pengaturan AI
           </h2>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
-              Gaya Bahasa
-            </label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Gaya Bahasa</label>
             <input
               type="text"
               value={style}
               onChange={(e) => setStyle(e.target.value)}
-              style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.875rem', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', color: '#111827', fontSize: '0.875rem', boxSizing: 'border-box' }}
             />
           </div>
 
           <div style={{ marginBottom: '1rem' }}>
-            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>
-              Instruksi Utama
-            </label>
+            <label style={{ display: 'block', fontSize: '0.875rem', fontWeight: '600', color: '#374151', marginBottom: '0.5rem' }}>Instruksi Utama</label>
             <textarea
-              rows={4}
+              rows={3}
               value={instruction}
               onChange={(e) => setInstruction(e.target.value)}
-              style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.875rem', boxSizing: 'border-box' }}
+              style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', color: '#111827', fontSize: '0.875rem', boxSizing: 'border-box' }}
             />
           </div>
 
@@ -103,38 +144,6 @@ export default function Home() {
             💾 Simpan Instruksi
           </button>
           {statusMsg && <p style={{ fontSize: '0.75rem', marginTop: '0.5rem', textAlign: 'center', color: '#4b5563' }}>{statusMsg}</p>}
-        </div>
-
-        {/* Test AI Section */}
-        <div style={{ backgroundColor: '#ffffff', padding: '1.5rem', borderRadius: '12px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}>
-          <h2 style={{ fontSize: '1rem', fontWeight: 'bold', color: '#1e3a8a', marginBottom: '1rem' }}>
-            Uji Coba AI
-          </h2>
-
-          <div style={{ marginBottom: '1rem' }}>
-            <input
-              type="text"
-              placeholder="Ketik pesan tes..."
-              value={testInput}
-              onChange={(e) => setTestInput(e.target.value)}
-              style={{ width: '100%', padding: '0.625rem', borderRadius: '8px', border: '1px solid #d1d5db', backgroundColor: '#ffffff', color: '#111827', fontSize: '0.875rem', boxSizing: 'border-box' }}
-            />
-          </div>
-
-          <button
-            onClick={handleTest}
-            disabled={loading}
-            style={{ width: '100%', backgroundColor: '#059669', color: '#ffffff', fontWeight: '600', padding: '0.625rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontSize: '0.875rem' }}
-          >
-            {loading ? 'Memproses...' : '🚀 Tes Respon AI'}
-          </button>
-
-          {testOutput && (
-            <div style={{ marginTop: '1rem', padding: '0.75rem', backgroundColor: '#f9fafb', borderRadius: '8px', border: '1px solid #e5e7eb', fontSize: '0.875rem', color: '#1f2937' }}>
-              <strong>Hasil:</strong>
-              <p style={{ margin: '0.25rem 0 0 0' }}>{testOutput}</p>
-            </div>
-          )}
         </div>
 
       </div>
