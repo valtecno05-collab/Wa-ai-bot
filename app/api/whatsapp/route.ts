@@ -1,64 +1,65 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
-async function sendWAMessage(to: string, text: string, mediaUrl?: string) {
-  await fetch('https://api.whatsapp-gateway.com/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      target: to,
-      message: text,
-      url: mediaUrl,
-    }),
-  });
+const FONNTE_TOKEN = process.env.FONNTE_TOKEN || '';
+
+async function sendWAMessage(to: string, message: string, mediaUrl?: string) {
+  try {
+    await fetch('https://api.fonnte.com/send', {
+      method: 'POST',
+      headers: { 'Authorization': FONNTE_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: to, message: message, url: mediaUrl }),
+    });
+  } catch (err) {
+    console.error('Error sendWAMessage:', err);
+  }
 }
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const sender = body.from || body.sender;
-    const rawMessage = (body.text || body.message || body.body || '').trim();
-    const lowerMessage = rawMessage.toLowerCase();
+    const sender = body.sender;
+    const rawMessage = (body.message || '').trim();
 
-    if (!rawMessage) return NextResponse.json({ status: 'ignored' });
+    if (!sender || !rawMessage) return NextResponse.json({ status: 'ignored' });
 
-    // Ambil nomor Admin
-    const { data: adminSetting } = await supabase
-      .from('settings')
-      .select('value')
-      .eq('key', 'admin_phone')
-      .single();
-    const adminPhone = adminSetting?.value || '';
+    let { data: lead } = await supabase.from('leads').select('*').eq('phone_number', sender).single();
 
-    // Cek Data Lead
-    let { data: lead } = await supabase
-      .from('leads')
-      .select('*')
-      .eq('phone_number', sender)
-      .single();
+    // 1. CEK STATUS KONTROL AI (Jika OFF/PAUSE, Bot diam dan abaikan pesan)
+    if (lead && lead.is_ai_active === false) {
+      await supabase.from('leads').update({
+        last_message: rawMessage,
+        updated_at: new Date().toISOString()
+      }).eq('phone_number', sender);
 
-    // 1. CUSTOMER BARU: Tampilkan Greeting & Wajibkan Jawab Sumber Info
+      return NextResponse.json({ status: 'ai_paused_by_admin' });
+    }
+
+    // 2. JIKA CUSTOMER BARU
     if (!lead) {
       await supabase.from('leads').insert([
-        { phone_number: sender, status: 'WAITING_SOURCE' }
+        { phone_number: sender, status: 'WAITING_SOURCE', last_message: rawMessage }
       ]);
 
       const greetingText = `Halo! Selamat datang 👋\n\n` +
-        `Sebelum kita mulai, mohon bantu kami memilih: Dari mana Kamu mendapat nomor WhatsApp kami?\n\n` +
-        `1. Instagram\n` +
-        `2. Google Maps\n` +
-        `3. TikTok\n\n` +
-        `*Silakan jawab dengan mengetik angkanya saja (1/2/3).*`;
+        `Sebelum kita mulai, mohon pilih: Dari mana Kamu mendapat nomor WhatsApp kami?\n\n` +
+        `1. Instagram\n2. Google Maps\n3. TikTok\n\n` +
+        `*Silakan ketik angkanya saja (1/2/3).*`;
 
       await sendWAMessage(sender, greetingText);
+      await supabase.from('leads').update({ last_reply: greetingText }).eq('phone_number', sender);
       return NextResponse.json({ status: 'greeting_sent' });
     }
 
-    // 2. STATUS WAITING_SOURCE: AI Diblokir Sebelum Menjawab 1/2/3
+    // UPDATE PESAN TERAKHIR
+    let replyText = '';
+
+    // 3. SURVEI 1/2/3
     if (lead.status === 'WAITING_SOURCE') {
       let selectedSource = '';
       if (rawMessage === '1') selectedSource = 'Instagram';
@@ -66,67 +67,26 @@ export async function POST(req: Request) {
       else if (rawMessage === '3') selectedSource = 'TikTok';
 
       if (!selectedSource) {
-        await sendWAMessage(
-          sender,
-          `Mohon pilih angka 1, 2, atau 3 terlebih dahulu untuk melanjutkan:\n\n1. Instagram\n2. Google Maps\n3. TikTok`
-        );
-        return NextResponse.json({ status: 'waiting_valid_option' });
-      }
-
-      await supabase
-        .from('leads')
-        .update({ source: selectedSource, status: 'ACTIVE' })
-        .eq('phone_number', sender);
-
-      await sendWAMessage(
-        sender,
-        `Terima kasih! Seri HP tipe apa yang sedang Kamu cari hari ini?`
-      );
-      return NextResponse.json({ status: 'source_saved' });
-    }
-
-    // 3. Rekap Seri HP yang Dicari
-    if (!lead.phone_series_searched) {
-      await supabase
-        .from('leads')
-        .update({ phone_series_searched: rawMessage })
-        .eq('phone_number', sender);
-    }
-
-    // 4. FITUR KATALOG / FOTO / WARNA
-    if (lowerMessage.includes('katalog') || lowerMessage.includes('foto') || lowerMessage.includes('warna')) {
-      const { data: products } = await supabase.from('catalog').select('*').limit(3);
-
-      if (products && products.length > 0) {
-        for (const item of products) {
-          await sendWAMessage(sender, `🎨 *${item.name}*\n${item.description || ''}`, item.image_url);
-        }
+        replyText = `Mohon pilih angka 1, 2, atau 3 terlebih dahulu:\n\n1. Instagram\n2. Google Maps\n3. TikTok`;
       } else {
-        await sendWAMessage(sender, 'Katalog foto saat ini sedang disiapkan.');
+        await supabase.from('leads').update({ source: selectedSource, status: 'ACTIVE' }).eq('phone_number', sender);
+        replyText = `Terima kasih! Seri HP tipe apa yang sedang Kamu cari hari ini?`;
       }
-      return NextResponse.json({ status: 'catalog_sent' });
+
+      await sendWAMessage(sender, replyText);
+      await supabase.from('leads').update({ last_message: rawMessage, last_reply: replyText, updated_at: new Date().toISOString() }).eq('phone_number', sender);
+      return NextResponse.json({ status: 'processed' });
     }
 
-    // 5. FITUR CEK STOK (Forward ke Admin)
-    if (lowerMessage.includes('stok') || lowerMessage.includes('ready')) {
-      await sendWAMessage(sender, 'Pertanyaan stok/warna Kamu sudah kami teruskan ke Admin. Mohon tunggu sebentar ya!');
-      if (adminPhone) {
-        await sendWAMessage(adminPhone, `📌 *PERMINTAAN CEK STOK*\nDari: ${sender}\nPesan: "${rawMessage}"`);
-      }
-      return NextResponse.json({ status: 'stock_forwarded' });
-    }
+    // BALASAN UMUM AI
+    replyText = `Terima kasih! Tim kami telah mencatat permintaan Kamu: *${rawMessage}*. Ketik *Katalog* untuk melihat pilihan unit.`;
+    await sendWAMessage(sender, replyText);
 
-    // 6. FITUR ORDER (Rincian Order ke Admin)
-    if (lowerMessage.includes('order') || lowerMessage.includes('pesan')) {
-      await sendWAMessage(sender, 'Rincian order Kamu telah kami catat dan diteruskan ke Admin untuk proses transaksi.');
-      if (adminPhone) {
-        await sendWAMessage(adminPhone, `🛒 *RINCIAN ORDER BARU*\nDari: ${sender}\nDetail: "${rawMessage}"`);
-      }
-      return NextResponse.json({ status: 'order_forwarded' });
-    }
-
-    // 7. BALASAN UMUM
-    await sendWAMessage(sender, `Terima kasih! Tim kami telah mencatat permintaan Kamu untuk tipe: *${rawMessage}*. Ketik *Katalog* untuk melihat foto unit/warna.`);
+    await supabase.from('leads').update({
+      last_message: rawMessage,
+      last_reply: replyText,
+      updated_at: new Date().toISOString()
+    }).eq('phone_number', sender);
 
     return NextResponse.json({ status: 'processed' });
   } catch (error: any) {
