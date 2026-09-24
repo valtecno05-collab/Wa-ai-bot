@@ -10,35 +10,38 @@ export default function Home() {
   const [isTyping, setIsTyping] = useState(false);
 
   const handleSendChat = async () => {
-    if (!inputMessage) return;
+    if (!inputMessage.trim()) return;
 
-    const newMsgs = [...messages, { sender: 'user', text: inputMessage }];
+    const userText = inputMessage;
+    const newMsgs = [...messages, { sender: 'user', text: userText }];
     setMessages(newMsgs);
     setInputMessage('');
     setIsTyping(true);
 
     try {
-      const res = await fetch('/api/admin/training', {
+      // Mengirim ke API simulator khusus simulasi balasan WhatsApp Customer
+      const res = await fetch('/api/chat/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: inputMessage }),
+        body: JSON.stringify({ message: userText }),
       });
       const data = await res.json();
 
       setTimeout(() => {
         setIsTyping(false);
-        setMessages([...newMsgs, { sender: 'ai', text: data.reply || 'Instruksi berhasil diproses oleh AI.' }]);
-      }, 1000);
+        setMessages([...newMsgs, { sender: 'ai', text: data.reply }]);
+      }, 800);
     } catch {
       setIsTyping(false);
+      setMessages([...newMsgs, { sender: 'ai', text: 'Maaf, terjadi kendala saat memproses balasan.' }]);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto">
+    <div className="space-y-6 max-w-4xl mx-auto font-sans">
       <div className="bg-blue-600 text-white p-6 rounded-3xl shadow-md">
         <h1 className="text-xl md:text-2xl font-bold">TECNO Official Store Jogja - Command Center</h1>
-        <p className="text-xs text-blue-100 mt-1">Sistem Otomatisasi WhatsApp & AI Training Agent.</p>
+        <p className="text-xs text-blue-100 mt-1">Sistem Otomatisasi WhatsApp & Live Customer Chat Tester.</p>
       </div>
 
       {/* Simulator Chat Mockup */}
@@ -48,24 +51,24 @@ export default function Home() {
             <span className="bg-blue-600 text-white font-extrabold text-xs px-2 py-0.5 rounded">TECNO</span>
             <span className="font-bold text-xs">Official Store Jogja</span>
           </div>
-          <span className="text-xs text-emerald-400">● Online</span>
+          <span className="text-xs text-emerald-400">● Online (Real-Time Test)</span>
         </div>
 
         <div className="p-4 space-y-3 h-80 overflow-y-auto bg-slate-50">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`p-3 rounded-2xl text-xs max-w-[85%] ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'}`}>
+              <div className={`p-3 rounded-2xl text-xs max-w-[85%] ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800 shadow-sm'}`}>
                 {msg.text}
               </div>
             </div>
           ))}
-          {isTyping && <div className="text-xs text-slate-400 italic p-2">AI sedang mengetik...</div>}
+          {isTyping && <div className="text-xs text-slate-400 italic p-2">AI sedang mengetik balasan...</div>}
         </div>
 
         <div className="p-3 border-t border-slate-100 bg-white flex gap-2">
           <input
             type="text"
-            placeholder="Ketik pertanyaan atau instruksi AI..."
+            placeholder="Ketik pertanyaan sebagai customer..."
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
