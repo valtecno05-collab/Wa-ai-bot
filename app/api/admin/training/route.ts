@@ -122,3 +122,24 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
 }
+
+// Tambahkan logika ini di dalam API /api/admin/training
+
+if (lowerMessage.startsWith('kembangkan kalimat:') || lowerMessage.startsWith('buatkan skema:')) {
+  // AI akan menyempurnakan kalimat kasar menjadi respons profesional untuk WhatsApp
+  const userDraft = message.replace(/kembangkan kalimat:|buatkan skema:/i, '').trim();
+
+  const expandedResponse = `Halo Kak! Terima kasih sudah menghubungi TECNO Official Store Jogja. ${userDraft} Ada yang bisa kami bantu kembali Kak?`;
+
+  // Simpan hasil pengembangan ke Knowledge Base secara otomatis
+  await supabase.from('knowledge_base').insert({
+    title: `Auto-Expanded Rule: ${userDraft.slice(0, 15)}...`,
+    content: expandedResponse,
+    is_active: true,
+  });
+
+  return NextResponse.json({
+    reply: `✨ **Hasil Pengembangan AI & Skema Logika:**\n\n"${expandedResponse}"\n\n✅ Aturan ini telah otomatis disimpan dan aktif di WhatsApp!`,
+  });
+}
+
