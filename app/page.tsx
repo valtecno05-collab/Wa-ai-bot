@@ -4,7 +4,7 @@ import { useState } from 'react';
 
 export default function Home() {
   const [messages, setMessages] = useState([
-    { sender: 'ai', text: 'Halo! Saya NexChat AI. Ada yang bisa dibantu?' }
+    { sender: 'ai', text: 'Hallo selamat datang di Tecno Official Store Jogja ada yang bisa saya bantu hari ini.' }
   ]);
   const [inputMessage, setInputMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -27,7 +27,7 @@ export default function Home() {
 
       setTimeout(() => {
         setIsTyping(false);
-        setMessages([...newMsgs, { sender: 'ai', text: data.reply || 'Instruksi berhasil diproses.' }]);
+        setMessages([...newMsgs, { sender: 'ai', text: data.reply || 'Instruksi berhasil diproses oleh AI.' }]);
       }, 1000);
     } catch {
       setIsTyping(false);
@@ -35,39 +35,43 @@ export default function Home() {
   };
 
   return (
-    <div className="p-4 space-y-6 max-w-4xl mx-auto font-sans">
-      <div className="bg-blue-600 text-white p-6 rounded-3xl shadow-lg">
-        <h1 className="text-xl font-bold">🚀 Nexchat Command Center</h1>
-        <p className="text-xs text-blue-100 mt-1">Sistem Training AI, Follow-Up, & Media Otomatis Active.</p>
+    <div className="space-y-6 max-w-4xl mx-auto">
+      <div className="bg-blue-600 text-white p-6 rounded-3xl shadow-md">
+        <h1 className="text-xl md:text-2xl font-bold">TECNO Official Store Jogja - Command Center</h1>
+        <p className="text-xs text-blue-100 mt-1">Sistem Otomatisasi WhatsApp & AI Training Agent.</p>
       </div>
 
-      <div className="bg-white p-4 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <div className="border-b border-slate-100 pb-3">
-          <h2 className="font-bold text-slate-800 text-sm">🧪 Simulator Training AI</h2>
-          <p className="text-[11px] text-slate-400">Ketik perintah follow-up, tambah FAQ, atau set aturan media di sini.</p>
+      {/* Simulator Chat Mockup */}
+      <div className="bg-white rounded-3xl border border-slate-200 shadow-xl overflow-hidden max-w-md mx-auto">
+        <div className="bg-slate-900 text-white p-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="bg-blue-600 text-white font-extrabold text-xs px-2 py-0.5 rounded">TECNO</span>
+            <span className="font-bold text-xs">Official Store Jogja</span>
+          </div>
+          <span className="text-xs text-emerald-400">● Online</span>
         </div>
 
-        <div className="space-y-3 h-64 overflow-y-auto p-2 bg-slate-50 rounded-2xl">
+        <div className="p-4 space-y-3 h-80 overflow-y-auto bg-slate-50">
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`p-3 rounded-2xl text-xs max-w-[80%] ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'}`}>
+              <div className={`p-3 rounded-2xl text-xs max-w-[85%] ${msg.sender === 'user' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-800'}`}>
                 {msg.text}
               </div>
             </div>
           ))}
-          {isTyping && <div className="text-xs text-slate-400 italic p-2">AI sedang memproses...</div>}
+          {isTyping && <div className="text-xs text-slate-400 italic p-2">AI sedang mengetik...</div>}
         </div>
 
-        <div className="flex gap-2">
+        <div className="p-3 border-t border-slate-100 bg-white flex gap-2">
           <input
             type="text"
-            placeholder="Coba: followup 08123... atau kirim gambar..."
+            placeholder="Ketik pertanyaan atau instruksi AI..."
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSendChat()}
             className="flex-1 bg-slate-100 border-0 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
           />
-          <button onClick={handleSendChat} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs">Kirim</button>
+          <button onClick={handleSendChat} className="px-4 py-2 bg-blue-600 text-white font-bold rounded-xl text-xs hover:bg-blue-700">Kirim</button>
         </div>
       </div>
     </div>
