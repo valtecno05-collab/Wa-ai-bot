@@ -1,6 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 export default function KnowledgePage() {
   const [knowledgeList, setKnowledgeList] = useState<any[]>([]);
@@ -9,11 +15,15 @@ export default function KnowledgePage() {
   const fetchKnowledge = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch('/api/admin/knowledge');
-      const data = await res.json();
+      const { data, error } = await supabase
+        .from('knowledge_base')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
       setKnowledgeList(Array.isArray(data) ? data : []);
     } catch (err) {
-      console.error('Gagal memuat knowledge', err);
+      console.error('Gagal memuat knowledge:', err);
     } finally {
       setIsLoading(false);
     }
@@ -23,19 +33,18 @@ export default function KnowledgePage() {
     fetchKnowledge();
   }, []);
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     if (!confirm('Hapus instruksi ini dari memori AI?')) return;
-    await fetch(`/api/admin/knowledge?id=${id}`, { method: 'DELETE' });
+    await supabase.from('knowledge_base').delete().eq('id', id);
     fetchKnowledge();
   };
 
   return (
     <div className="space-y-6 max-w-4xl mx-auto font-sans p-4">
-      {/* Header Bar */}
       <div className="flex justify-between items-center bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">📚 Database Pengetahuan AI (Real-Time)</h1>
-          <p className="text-xs text-slate-500 mt-0.5">Daftar seluruh instruksi, aturan promo, dan media yang dipelajari oleh AI TECNO.</p>
+          <h1 className="text-xl font-bold text-slate-800">📚 Database Pengetahuan AI (Pusat Kontrol)</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Total Aktif: {knowledgeList.length} Aturan/Instruksi Terindeks.</p>
         </div>
         <button 
           onClick={fetchKnowledge} 
@@ -45,7 +54,6 @@ export default function KnowledgePage() {
         </button>
       </div>
 
-      {/* Content List */}
       {isLoading ? (
         <div className="text-center py-10 text-xs text-slate-400">Memuat data dari database...</div>
       ) : knowledgeList.length === 0 ? (
@@ -58,10 +66,10 @@ export default function KnowledgePage() {
             <div key={item.id} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-start gap-4 hover:border-slate-300 transition-all">
               <div className="space-y-1">
                 <span className="bg-blue-100 text-blue-700 font-bold text-[10px] px-2 py-0.5 rounded-md">
-                  Instruksi Tersimpan
+                  {item.title || 'Instruksi AI'}
                 </span>
-                <h3 className="text-xs font-bold text-slate-800">{item.title}</h3>
-                <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-line">{item.content}</p>
+                <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-line mt-1">{item.content}</p>
+                <span className="text-[10px] text-slate-400 block pt-1">Dibuat: {new Date(item.created_at).toLocaleString('id-ID')}</span>
               </div>
               <button 
                 onClick={() => handleDelete(item.id)} 
