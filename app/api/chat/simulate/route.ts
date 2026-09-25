@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { GoogleGenAI } from '@google/genai';
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
@@ -8,7 +7,6 @@ const supabase = createClient(
 );
 
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
 
 export async function POST(req: Request) {
   try {
@@ -37,7 +35,7 @@ export async function POST(req: Request) {
     let prompt = '';
 
     if (mode === 'admin') {
-      // Jika Admin memberikan instruksi baru via chat, simpan otomatis ke Supabase
+      // Simpan otomatis jika admin memberikan instruksi baru
       if (
         lowerMsg.includes('jawab') || 
         lowerMsg.includes('perbaiki') || 
@@ -78,13 +76,25 @@ export async function POST(req: Request) {
       `;
     }
 
-    // 2. Pemanggilan Gemini API menggunakan SDK terbaru @google/genai
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt,
-    });
+    // 2. Panggil API Gemini via HTTP Fetch Native (Tanpa butuh library npm)
+    const geminiResponse = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      }
+    );
 
-    const responseText = response.text || 'Tidak ada tanggapan dari AI.';
+    const resultData = await geminiResponse.json();
+
+    if (!geminiResponse.ok) {
+      throw new Error(resultData.error?.message || 'Gagal terhubung ke Gemini API');
+    }
+
+    const responseText = resultData.candidates?.[0]?.content?.parts?.[0]?.text || 'Tidak ada tanggapan dari AI.';
 
     return NextResponse.json({
       reply: responseText,
