@@ -1,20 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-
 import AiToggle from './components/AiToggle';
 
-export default function Home() {
-  return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans p-4">
-      {/* Tombol Control ON/OFF Status AI */}
-      <AiToggle />
-
-      {/* Simulator Chat / Tester Tetap Bisa Digunakan Kapan Saja */}
-      {/* ... Sisa Tampilan Dashboard Kamu ... */}
-    </div>
-  );
-}
 export default function Home() {
   const [messages, setMessages] = useState([
     { sender: 'ai', text: 'Hallo selamat datang di Tecno Official Store Jogja ada yang bisa saya bantu hari ini.' }
@@ -32,7 +20,6 @@ export default function Home() {
     setIsTyping(true);
 
     try {
-      // Mengirim ke API simulator khusus simulasi balasan WhatsApp Customer
       const res = await fetch('/api/chat/simulate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -51,7 +38,10 @@ export default function Home() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans">
+    <div className="space-y-6 max-w-4xl mx-auto font-sans p-4">
+      {/* Tombol Control ON/OFF AI */}
+      <AiToggle />
+
       <div className="bg-blue-600 text-white p-6 rounded-3xl shadow-md">
         <h1 className="text-xl md:text-2xl font-bold">TECNO Official Store Jogja - Command Center</h1>
         <p className="text-xs text-blue-100 mt-1">Sistem Otomatisasi WhatsApp & Live Customer Chat Tester.</p>
