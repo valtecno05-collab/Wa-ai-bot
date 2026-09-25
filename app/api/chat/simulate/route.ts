@@ -13,14 +13,26 @@ export async function POST(req: Request) {
 
     const lower = message.toLowerCase().trim();
 
-    // 1. Cek Sapaan Umum
-    if (lower.includes('hallo') || lower.includes('halo') || lower.includes('malam') || lower.includes('pagi') || lower.includes('siang')) {
-      return NextResponse.json({
-        reply: 'Halo Kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu terkait produk atau promo TECNO hari ini?'
+    // 1. CEK KNOWLEDGE BASE TERUPDATE (REAL-TIME)
+    const { data: knowledge } = await supabase.from('knowledge_base').select('*').order('created_at', { ascending: false });
+
+    if (knowledge && knowledge.length > 0) {
+      // Cari instruksi/pengetahuan yang paling cocok dengan pertanyaan user
+      const matchedKB = knowledge.find(k => {
+        const contentLower = (k.content || '').toLowerCase();
+        const titleLower = (k.title || '').toLowerCase();
+        
+        // Memecah kata kunci untuk pencocokan pintar
+        const keywords = lower.split(' ');
+        return keywords.some(word => word.length > 3 && (contentLower.includes(word) || titleLower.includes(word)));
       });
+
+      if (matchedKB) {
+        return NextResponse.json({ reply: matchedKB.content });
+      }
     }
 
-    // 2. Cek FAQ dari Database Supabase
+    // 2. CEK FAQ
     const { data: faqs } = await supabase.from('faqs').select('*');
     if (faqs && faqs.length > 0) {
       const matchedFaq = faqs.find(f => lower.includes(f.question.toLowerCase()));
@@ -29,21 +41,18 @@ export async function POST(req: Request) {
       }
     }
 
-    // 3. Cek Knowledge Base
-    const { data: knowledge } = await supabase.from('knowledge_base').select('*');
-    if (knowledge && knowledge.length > 0) {
-      const matchedKB = knowledge.find(k => lower.includes(k.title.toLowerCase()) || lower.includes(k.content.toLowerCase()));
-      if (matchedKB) {
-        return NextResponse.json({ reply: matchedKB.content });
-      }
+    // 3. SAPAAN DEFAULT JIKA BELUM ADA ATURAN KHUSUS
+    if (lower.includes('hallo') || lower.includes('halo') || lower.includes('pagi') || lower.includes('malam') || lower.includes('siang')) {
+      return NextResponse.json({
+        reply: 'Halo Kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu hari ini?'
+      });
     }
 
-    // Default Balasan AI jika belum ada aturan spesifik
     return NextResponse.json({
-      reply: 'Terima kasih telah menghubungi TECNO Official Store Jogja. Ada info tipe/seri HP TECNO yang ingin Kakak tanyakan?'
+      reply: 'Terima kasih telah menghubungi TECNO Official Store Jogja. Ada yang bisa kami bantu terkait produk atau promo kami?'
     });
 
   } catch (err: any) {
-    return NextResponse.json({ reply: 'Maaf, sistem sedang memproses pembaruan aturan.' });
+    return NextResponse.json({ reply: 'Sistem sedang menyesuaikan memori AI.' });
   }
 }
