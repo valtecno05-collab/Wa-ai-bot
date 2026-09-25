@@ -34,8 +34,8 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. Menggunakan nama model terbaru yang valid
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+    // 2. Menggunakan nama model gemini-3.8-flash sesuai instruksi API Google
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
 
     let prompt = '';
 
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
       `;
     } else {
       prompt = `
-      Anda adalah Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah (panggil pelanggan dengan sapaan "Kak").
+      Anda meupakan Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah (panggil pelanggan dengan sapaan "Kak").
       
       Aturan & Informasi Wajib dari Knowledge Base:
       ${rulesContext}
