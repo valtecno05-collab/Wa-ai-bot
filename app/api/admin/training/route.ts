@@ -9,70 +9,40 @@ const supabase = createClient(
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { message, media_label, media_data, media_type } = body;
+    const { message, title, content } = body;
 
-    if (!message) {
-      return NextResponse.json({ error: 'Pesan instruksi tidak boleh kosong' }, { status: 400 });
+    const inputContent = content || message;
+    const inputTitle = title || (inputContent ? inputContent.slice(0, 30) : 'Aturan Baru');
+
+    if (!inputContent) {
+      return NextResponse.json({ error: 'Instruksi tidak boleh kosong' }, { status: 400 });
     }
 
-    const lowerMessage = message.toLowerCase().trim();
+    // 1. Simpan ke Knowledge Base Supabase secara Otomatis
+    const { data: kbData, error: kbError } = await supabase
+      .from('knowledge_base')
+      .insert({
+        title: inputTitle,
+        content: inputContent,
+        is_active: true
+      })
+      .select();
 
-    // 1. INSTRUKSI PENGEMBANGAN KALIMAT / SKEMA LOGIKA
-    if (lowerMessage.startsWith('kembangkan kalimat:') || lowerMessage.startsWith('buatkan skema:')) {
-      const userDraft = message.replace(/kembangkan kalimat:|buatkan skema:/i, '').trim();
-      const expandedResponse = `Halo Kak! Terima kasih telah menghubungi TECNO Official Store Jogja. ${userDraft} Ada yang bisa kami bantu kembali Kak?`;
-
-      await supabase.from('knowledge_base').insert({
-        title: `Skema: ${userDraft.slice(0, 30)}`,
-        content: expandedResponse,
-        is_active: true,
-      });
-
-      return NextResponse.json({
-        reply: `✨ **Aturan Berhasil Disimpan ke Knowledge Base!**\n\n"${expandedResponse}"`,
-      });
-    }
-
-    // 2. INSTRUKSI PEMICU MEDIA (GAMBAR/VIDEO)
-    if (lowerMessage.includes('kirim gambar') || lowerMessage.includes('kirim video') || media_data) {
-      const isVideo = lowerMessage.includes('kirim video') || media_type === 'video';
-      const type = isVideo ? 'video' : 'image';
-
-      await supabase.from('media_rules').insert({
-        trigger_instruction: message,
-        label_name: media_label || 'media_attachment',
-        media_data: media_data || null,
-        media_type: type,
-        is_active: true,
-      });
-
-      // Simpan juga ringkasan aturan ke Knowledge Base
-      await supabase.from('knowledge_base').insert({
-        title: `Media Rule (${type.toUpperCase()})`,
-        content: message,
-        is_active: true,
-      });
-
-      return NextResponse.json({
-        reply: `✅ **Aturan Media Disimpan ke Knowledge Base!**\n📌 Instruksi: "${message}"`,
-      });
-    }
-
-    // 3. INSTRUKSI DEFAULT (SEMUA PESAN TRAINING LAINNYA)
-    // Otomatis disimpan langsung ke Knowledge Base & AI Rules
-    await supabase.from('knowledge_base').insert({
-      title: `Training: ${message.slice(0, 30)}...`,
-      content: message,
-      is_active: true,
-    });
-
+    // 2. Simpan juga ke AI Rules
     await supabase.from('ai_rules').insert({
-      instruction: message,
-      is_active: true,
+      instruction: inputContent,
+      is_active: true
     });
+
+    if (kbError) {
+      console.error('Database Error:', kbError);
+      return NextResponse.json({ error: 'Gagal menyimpan ke database Supabase: ' + kbError.message }, { status: 500 });
+    }
 
     return NextResponse.json({
-      reply: `⚙️ **Aturan AI Berhasil Dipelajari & Tersimpan!**\n\nInstruksi: "${message}"\n\nSistem telah memperbarui Knowledge Base secara real-time.`,
+      success: true,
+      reply: `✅ **Berhasil Disimpan & AI Langsung Mengerti!**\n\n📌 **Judul/Topik:** ${inputTitle}\n💡 **Instruksi Logika:** "${inputContent}"\n\nAturan ini sudah otomatis aktif di WhatsApp & Simulator!`,
+      data: kbData
     });
 
   } catch (err: any) {
