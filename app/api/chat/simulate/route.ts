@@ -10,6 +10,29 @@ const supabase = createClient(
 const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
 const genAI = new GoogleGenerativeAI(apiKey);
 
+// Daftar model cadangan jika server Google sedang sibuk/overload (503)
+const AVAILABLE_MODELS = ['gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-1.0-pro'];
+
+async function generateAIResponseWithFallback(prompt: string) {
+  let lastError = null;
+
+  for (const modelName of AVAILABLE_MODELS) {
+    try {
+      const model = genAI.getGenerativeModel({ model: modelName });
+      const result = await model.generateContent(prompt);
+      const text = result.response.text();
+      if (text) {
+        return { text, usedModel: modelName };
+      }
+    } catch (err: any) {
+      console.warn(`Model ${modelName} gagal/overload, mencoba model cadangan...`, err.message);
+      lastError = err;
+    }
+  }
+
+  throw lastError || new Error('Semua model Gemini sedang sibuk.');
+}
+
 export async function POST(req: Request) {
   try {
     const { message, mode } = await req.json();
@@ -17,7 +40,7 @@ export async function POST(req: Request) {
 
     const lowerMsg = message.toLowerCase().trim();
 
-    // 1. Ambil data Knowledge Base terbaru dari Supabase
+    // 1. Ambil data Knowledge Base dari Supabase
     const { data: knowledgeList } = await supabase
       .from('knowledge_base')
       .select('*')
@@ -34,13 +57,10 @@ export async function POST(req: Request) {
       });
     }
 
-    // 2. Menggunakan nama model gemini-3.8-flash sesuai instruksi API Google
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
-
     let prompt = '';
 
     if (mode === 'admin') {
-      // Jika Admin memberikan instruksi baru via chat, simpan langsung ke database
+      // Jika Admin memberikan instruksi perbaikan via chat
       if (lowerMsg.includes('jawab') || lowerMsg.includes('perbaiki') || lowerMsg.includes('ubah') || lowerMsg.includes('harus') || lowerMsg.includes('lokasi')) {
         await supabase.from('knowledge_base').insert([
           {
@@ -63,7 +83,7 @@ export async function POST(req: Request) {
       `;
     } else {
       prompt = `
-      Anda meupakan Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah (panggil pelanggan dengan sapaan "Kak").
+      Anda adalah Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah (panggil pelanggan dengan sapaan "Kak").
       
       Aturan & Informasi Wajib dari Knowledge Base:
       ${rulesContext}
@@ -74,21 +94,21 @@ export async function POST(req: Request) {
       `;
     }
 
-    const result = await model.generateContent(prompt);
-    const responseText = result.response.text();
+    // 2. Panggil fungsi AI dengan proteksi Auto-Fallback
+    const { text: responseText, usedModel } = await generateAIResponseWithFallback(prompt);
 
     return NextResponse.json({
       reply: responseText,
       explanation: mode === 'admin' 
-        ? `🧠 **Admin Debugger:** Berhasil memproses instruksi. Total Knowledge Terdeteksi: ${(knowledgeList?.length || 0) + 1}`
-        : `🧠 **AI Customer Service:** Merespons berdasarkan aturan Knowledge Base aktif.`
+        ? `🧠 **Admin Debugger (${usedModel}):** Berhasil memproses instruksi. Total Knowledge Terdeteksi: ${(knowledgeList?.length || 0) + 1}`
+        : `🧠 **AI Customer Service (${usedModel}):** Merespons berdasarkan aturan Knowledge Base aktif.`
     });
 
   } catch (err: any) {
     console.error('Simulate API Error:', err);
     return NextResponse.json({ 
-      reply: 'Maaf, terjadi kendala saat memproses komunikasi dengan AI.', 
-      explanation: err.message || 'Terjadi kesalahan sistem.' 
+      reply: 'Maaf, server AI sedang mengalami beban tinggi (overload). Silakan coba kirim ulang dalam beberapa detik.', 
+      explanation: err.message || 'Error 503 Server Unavailable' 
     }, { status: 500 });
   }
 }
