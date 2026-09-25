@@ -2,6 +2,19 @@
 
 import { useState } from 'react';
 
+import AiToggle from './components/AiToggle';
+
+export default function Home() {
+  return (
+    <div className="space-y-6 max-w-4xl mx-auto font-sans p-4">
+      {/* Tombol Control ON/OFF Status AI */}
+      <AiToggle />
+
+      {/* Simulator Chat / Tester Tetap Bisa Digunakan Kapan Saja */}
+      {/* ... Sisa Tampilan Dashboard Kamu ... */}
+    </div>
+  );
+}
 export default function Home() {
   const [messages, setMessages] = useState([
     { sender: 'ai', text: 'Hallo selamat datang di Tecno Official Store Jogja ada yang bisa saya bantu hari ini.' }
