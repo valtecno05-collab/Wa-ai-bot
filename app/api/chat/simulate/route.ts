@@ -8,51 +8,37 @@ const supabase = createClient(
 
 export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const { message, phone_number } = await req.json();
     if (!message) return NextResponse.json({ reply: 'Pesan kosong.' });
 
     const lower = message.toLowerCase().trim();
 
-    // 1. CEK KNOWLEDGE BASE TERUPDATE (REAL-TIME)
-    const { data: knowledge } = await supabase.from('knowledge_base').select('*').order('created_at', { ascending: false });
+    // 1. Ambil Semua Pengetahuan AI Terbaru dari Supabase
+    const { data: knowledge } = await supabase.from('knowledge_base').select('*').eq('is_active', true);
+    const { data: rules } = await supabase.from('ai_rules').select('*').eq('is_active', true);
 
+    // 2. Cari Aturan / Logika yang Cocok dengan Pertanyaan
     if (knowledge && knowledge.length > 0) {
-      // Cari instruksi/pengetahuan yang paling cocok dengan pertanyaan user
-      const matchedKB = knowledge.find(k => {
-        const contentLower = (k.content || '').toLowerCase();
-        const titleLower = (k.title || '').toLowerCase();
-        
-        // Memecah kata kunci untuk pencocokan pintar
-        const keywords = lower.split(' ');
-        return keywords.some(word => word.length > 3 && (contentLower.includes(word) || titleLower.includes(word)));
-      });
+      for (const item of knowledge) {
+        const itemContent = (item.content || '').toLowerCase();
+        const itemTitle = (item.title || '').toLowerCase();
 
-      if (matchedKB) {
-        return NextResponse.json({ reply: matchedKB.content });
+        // Cek jika pertanyaan user mengandung kata kunci dari aturan yang ditraining
+        const words = lower.split(' ');
+        const isMatch = words.some(w => w.length > 2 && (itemContent.includes(w) || itemTitle.includes(w)));
+
+        if (isMatch) {
+          return NextResponse.json({ reply: item.content });
+        }
       }
     }
 
-    // 2. CEK FAQ
-    const { data: faqs } = await supabase.from('faqs').select('*');
-    if (faqs && faqs.length > 0) {
-      const matchedFaq = faqs.find(f => lower.includes(f.question.toLowerCase()));
-      if (matchedFaq) {
-        return NextResponse.json({ reply: matchedFaq.answer });
-      }
-    }
-
-    // 3. SAPAAN DEFAULT JIKA BELUM ADA ATURAN KHUSUS
-    if (lower.includes('hallo') || lower.includes('halo') || lower.includes('pagi') || lower.includes('malam') || lower.includes('siang')) {
-      return NextResponse.json({
-        reply: 'Halo Kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu hari ini?'
-      });
-    }
-
+    // 3. Respon Default Jika Belum Ada Logika Khusus
     return NextResponse.json({
-      reply: 'Terima kasih telah menghubungi TECNO Official Store Jogja. Ada yang bisa kami bantu terkait produk atau promo kami?'
+      reply: 'Halo Kak! Terima kasih sudah menghubungi TECNO Official Store Jogja. Ada yang bisa kami bantu terkait unit atau promo hari ini?'
     });
 
   } catch (err: any) {
-    return NextResponse.json({ reply: 'Sistem sedang menyesuaikan memori AI.' });
+    return NextResponse.json({ reply: 'Sistem sedang memperbarui data.' });
   }
 }
