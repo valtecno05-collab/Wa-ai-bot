@@ -6,27 +6,43 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 );
 
+// Get Status ON/OFF
 export async function GET() {
-  const { data } = await supabase.from('admin_settings').select('*').single();
-  return NextResponse.json(data || {});
+  try {
+    const { data } = await supabase
+      .from('system_settings')
+      .select('is_ai_active')
+      .eq('id', 'global_config')
+      .single();
+
+    return NextResponse.json({ is_ai_active: data?.is_ai_active ?? false });
+  } catch (err: any) {
+    return NextResponse.json({ is_ai_active: false });
+  }
 }
 
+// Toggle ON/OFF Status
 export async function POST(req: Request) {
   try {
-    const body = await req.json();
+    const { is_ai_active } = await req.json();
 
-    const { error } = await supabase.from('admin_settings').upsert({
-      id: 1, // Memakai ID tunggal untuk konfigurasi global
-      admin_phone: body.admin_phone,
-      forward_phone: body.forward_phone,
-      forward_leads: body.forward_leads,
-      forward_handover: body.forward_handover,
-      updated_at: new Date().toISOString(),
-    });
+    const { data, error } = await supabase
+      .from('system_settings')
+      .upsert({
+        id: 'global_config',
+        is_ai_active: is_ai_active,
+        updated_at: new Date().toISOString(),
+      });
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({
+      success: true,
+      is_ai_active,
+      message: is_ai_active
+        ? '🤖 AI WhatsApp Auto-Reply BERHASIL DIAKTIFKAN (24/7 Mode Active)!'
+        : '⏸️ AI WhatsApp Auto-Reply DIMATIKAN (Mode Training / Testing Active).',
+    });
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 });
   }
