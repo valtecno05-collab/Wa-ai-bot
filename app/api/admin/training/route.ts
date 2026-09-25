@@ -9,40 +9,33 @@ const supabase = createClient(
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { message, title, content } = body;
+    const { message, instruction, content, title } = body;
 
-    const inputContent = content || message;
-    const inputTitle = title || (inputContent ? inputContent.slice(0, 30) : 'Aturan Baru');
+    const textToSave = instruction || content || message;
+    const titleToSave = title || (textToSave ? textToSave.slice(0, 35) + '...' : 'Instruksi AI');
 
-    if (!inputContent) {
+    if (!textToSave) {
       return NextResponse.json({ error: 'Instruksi tidak boleh kosong' }, { status: 400 });
     }
 
-    // 1. Simpan ke Knowledge Base Supabase secara Otomatis
-    const { data: kbData, error: kbError } = await supabase
+    // Simpan ke Knowledge Base Supabase
+    const { data, error } = await supabase
       .from('knowledge_base')
       .insert({
-        title: inputTitle,
-        content: inputContent,
-        is_active: true
+        title: titleToSave,
+        content: textToSave
       })
       .select();
 
-    // 2. Simpan juga ke AI Rules
-    await supabase.from('ai_rules').insert({
-      instruction: inputContent,
-      is_active: true
-    });
-
-    if (kbError) {
-      console.error('Database Error:', kbError);
-      return NextResponse.json({ error: 'Gagal menyimpan ke database Supabase: ' + kbError.message }, { status: 500 });
+    if (error) {
+      console.error('Supabase Error:', error);
+      return NextResponse.json({ error: 'Gagal menyimpan ke database: ' + error.message }, { status: 500 });
     }
 
     return NextResponse.json({
       success: true,
-      reply: `✅ **Berhasil Disimpan & AI Langsung Mengerti!**\n\n📌 **Judul/Topik:** ${inputTitle}\n💡 **Instruksi Logika:** "${inputContent}"\n\nAturan ini sudah otomatis aktif di WhatsApp & Simulator!`,
-      data: kbData
+      reply: `✅ **Instruksi Berhasil Dipelajari AI!**\n\n📌 **Ringkasan:** ${titleToSave}\n\nAturan ini sudah aktif di Knowledge Base dan akan diolah AI saat membalas customer.`,
+      data
     });
 
   } catch (err: any) {
