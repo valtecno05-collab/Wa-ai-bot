@@ -9,89 +9,54 @@ const supabase = createClient(
 export async function POST(req: Request) {
   try {
     const { message, phone_number } = await req.json();
-    const userPhone = phone_number || '081234567890'; // Default nomor untuk simulator
+    const userPhone = phone_number || '081234567890';
 
-    if (!message) {
-      return NextResponse.json({ reply: 'Pesan kosong.' }, { status: 400 });
-    }
+    if (!message) return NextResponse.json({ reply: 'Pesan kosong.' });
 
-    const lowerMessage = message.toLowerCase().trim();
-
-    // =========================================================
-    // 1. MASUKAN LOGIKA: SIMPAN PESAN USER KE SUPABASE
-    // =========================================================
+    // 1. Simpan pesan user ke riwayat
     await supabase.from('chat_history').insert({
       phone_number: userPhone,
       sender: 'user',
-      message: message,
+      message: message
     });
 
-    // =========================================================
-    // 2. MASUKAN LOGIKA: BACA RIWAYAT OBROLAN LAMA (MEMORY THREAD)
-    // =========================================================
-    const { data: history } = await supabase
-      .from('chat_history')
-      .select('sender, message')
-      .eq('phone_number', userPhone)
-      .order('created_at', { ascending: false })
-      .limit(6); // Mengambil 6 pesan terakhir (3 pasang obrolan)
+    // 2. Ambil seluruh aturan & Knowledge Base dari Supabase
+    const { data: knowledge } = await supabase.from('knowledge_base').select('*');
 
-    // Susun riwayat teks untuk dibaca AI sebagai memori konteks
-    const conversationMemory = history
-      ? history.reverse().map(h => `${h.sender === 'user' ? 'Customer' : 'AI'}: ${h.message}`).join('\n')
-      : '';
+    // Kumpulkan semua instruksi dari Knowledge Base
+    const rulesPrompt = knowledge && knowledge.length > 0 
+      ? knowledge.map(k => `- ${k.content}`).join('\n')
+      : 'Berilahkan balasan yang ramah sebagai CS TECNO Official Store Jogja.';
 
-    // =========================================================
-    // 3. AMBIL PENGETAHUAN & ATURAN DARI KNOWLEDGE BASE
-    // =========================================================
-    const { data: knowledge } = await supabase
-      .from('knowledge_base')
-      .select('*')
-      .eq('is_active', true);
+    const lower = message.toLowerCase().trim();
+    let finalReply = '';
 
-    let aiReply = '';
-
-    // Logika Pencocokan Aturan dengan Memperhitungkan Konteks Chat
-    if (knowledge && knowledge.length > 0) {
-      for (const item of knowledge) {
-        const itemContent = (item.content || '').toLowerCase();
-        const itemTitle = (item.title || '').toLowerCase();
-
-        // Pengecekan kata kunci dari pesan baru MAUPUN dari konteks riwayat chat sebelumnya
-        const words = lowerMessage.split(' ');
-        const isMatch = words.some(w => w.length > 2 && (itemContent.includes(w) || itemTitle.includes(w)));
-
-        if (isMatch) {
-          aiReply = item.content;
-          break;
-        }
+    // 3. Logika Pemprosesan Instruksi Dinamis (Contoh Skenario Survei & Greeting)
+    if (rulesPrompt.includes('survei') || rulesPrompt.includes('dapat nomor kami dari mana')) {
+      if (lower.includes('hallo malam') || lower.includes('halo malam')) {
+        finalReply = 'Hallo kak malam juga 😊🙏\n\nUntuk keperluan survei dan pelayanan yang lebih baik, boleh tanya dulu ya: Kak dapat nomor kami dari mana?\n1. Instagram\n2. Google Maps\n3. Tiktok\n\nMohon bantuannya untuk dijawab sebentar saja ya kak, setelah itu kami akan langsung bantu informasikan daftar harganya. 🙏😊';
+      } else if (lower.includes('hallo') || lower.includes('permisi') || lower.includes('pagi') || lower.includes('siang')) {
+        finalReply = 'Hallo kak 😊🙏\n\nUntuk keperluan survei dan pelayanan yang lebih baik, boleh tanya dulu ya: Kak dapat nomor kami dari mana?\n1. Instagram\n2. Google Maps\n3. Tiktok\n\nMohon bantuannya untuk dijawab sebentar saja ya kak, setelah itu kami akan langsung bantu informasikan daftar harganya. 🙏😊';
+      } else if (['1', '2', '3', 'instagram', 'google', 'tiktok', 'maps'].some(w => lower.includes(w))) {
+        finalReply = 'Terima kasih banyak sudah menjawab surveinya kak! Kakak sedang mencari seri/tipe HP TECNO apa hari ini? Biar kami infokan promo harga terbaiknya.';
       }
     }
 
-    // Balasan Default jika tidak ada aturan khusus yang cocok
-    if (!aiReply) {
-      if (lowerMessage.includes('hallo') || lowerMessage.includes('halo') || lowerMessage.includes('pagi') || lowerMessage.includes('malam')) {
-        aiReply = 'Halo Kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu terkait produk atau promo hari ini?';
-      } else {
-        aiReply = 'Terima kasih telah menghubungi TECNO Official Store Jogja. Ada info tipe/seri HP TECNO yang ingin Kakak tanyakan?';
-      }
+    // Balasan Default jika tidak masuk skenario di atas
+    if (!finalReply) {
+      finalReply = 'Hallo kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu terkait promo atau tipe HP TECNO hari ini?';
     }
 
-    // =========================================================
-    // 4. MASUKAN LOGIKA: SIMPAN BALASAN AI KE RIWAYAT CHAT
-    // =========================================================
+    // 4. Simpan balasan ke riwayat chat
     await supabase.from('chat_history').insert({
       phone_number: userPhone,
       sender: 'ai',
-      message: aiReply,
+      message: finalReply
     });
 
-    return NextResponse.json({
-      reply: aiReply,
-      history_used: conversationMemory, // Mengembalikan riwayat chat yang digunakan (opsional untuk debug)
-    });
+    return NextResponse.json({ reply: finalReply });
 
   } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+    return NextResponse.json({ reply: 'Maaf, sistem sedang memproses instruksi baru.' });
   }
 }
