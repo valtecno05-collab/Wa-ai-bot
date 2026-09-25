@@ -1,10 +1,16 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
+// Inisialisasi Supabase
 const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+  process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
 );
+
+// Inisialisasi Gemini API (Pastikan GEMINI_API_KEY / GOOGLE_API_KEY sudah terdaftar di Environment Variables Vercel)
+const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function POST(req: Request) {
   try {
@@ -13,78 +19,86 @@ export async function POST(req: Request) {
 
     const lowerMsg = message.toLowerCase().trim();
 
-    // 1. Ambil seluruh Knowledge Base terbaru dari Supabase
-    const { data: knowledge } = await supabase
+    // 1. Ambil seluruh data Knowledge Base dari database Supabase
+    const { data: knowledgeList, error: dbError } = await supabase
       .from('knowledge_base')
       .select('*')
       .order('created_at', { ascending: false });
 
-    const allRules = knowledge && knowledge.length > 0
-      ? knowledge.map((k, i) => `${i + 1}. ${k.content}`).join('\n')
-      : 'Belum ada aturan khusus.';
+    if (dbError) {
+      console.error('Supabase fetch error:', dbError);
+    }
 
-    // MODE 1: ADMIN MODE (Diskusi, Evaluasi Bug & Tambah Instruksi Langsung)
-    if (mode === 'admin') {
-      let adminReply = '';
-      let explanation = '';
+    const rulesContext = knowledgeList && knowledgeList.length > 0
+      ? knowledgeList.map((k, i) => `- [${k.title}]: ${k.content}`).join('\n')
+      : 'Belum ada aturan khusus yang dimasukkan ke knowledge base.';
 
-      // Jika Admin memberikan perbaikan/instruksi tambahan via chat
-      if (lowerMsg.includes('perbaiki') || lowerMsg.includes('ubah') || lowerMsg.includes('harus') || lowerMsg.includes('salah')) {
-        // Simpan instruksi perbaikan langsung dari chat ke Knowledge Base
-        await supabase.from('knowledge_base').insert([
-          {
-            title: `Perbaikan: ${message.slice(0, 25)}...`,
-            content: message
-          }
-        ]);
-
-        adminReply = `🤖 **Siap Admin!** Bug/Instruksi baru sudah saya pahami dan langsung saya masukkan ke Knowledge Base:\n\n> "${message}"\n\nSilakan beralih ke Mode User untuk menguji balasan terbarunya.`;
-        explanation = `🧠 **AI Debugger:** Menyimpan instruksi perbaikan langsung dari sesi obrolan Admin ke database.`;
-      } else {
-        adminReply = `🤖 **Halo Admin!** Saat ini saya beroperasi menggunakan **${knowledge?.length || 0} Aturan Knowledge Base**.\n\nJika ada balasan saya yang kurang sesuai pada mode User, katakan langsung di sini (contoh: *"Perbaiki balasan greeting harus pakai kata Kak"*), dan saya akan memutakhirkan memori saya secara otomatis.`;
-        explanation = `🧠 **AI Debugger Active:** Berdiskusi dengan Admin mengenai performa dan logika AI.`;
-      }
-
+    // Jika API Key Gemini belum diset, fallback ke respons pintar berbasis aturan
+    if (!apiKey) {
       return NextResponse.json({
-        reply: adminReply,
-        explanation: explanation,
-        currentKnowledgeCount: knowledge?.length || 0
+        reply: `⚠️ Peringatan: GEMINI_API_KEY belum dikonfigurasi di Environment Variables Vercel. Menggunakan mode cadangan.\n\nPesan Anda diterima dalam mode [${mode.toUpperCase()}]. Total Knowledge: ${knowledgeList?.length || 0}`,
+        explanation: 'API Key AI tidak ditemukan.'
       });
     }
 
-    // MODE 2: USER MODE (Customer Simulation)
-    let finalReply = '';
-    let matchedRule = '';
+    // Gunakan model Gemini 1.5 Flash
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
-    // Cek ketersediaan aturan di Knowledge
-    if (knowledge && knowledge.length > 0) {
-      for (const item of knowledge) {
-        const contentStr = (item.content || '').toLowerCase();
-        const words = lowerMsg.split(/\s+/).filter(w => w.length > 2);
-        
-        if (words.some(w => contentStr.includes(w))) {
-          matchedRule = item.content;
-          break;
-        }
+    let prompt = '';
+
+    if (mode === 'admin') {
+      // 🛠️ ADMIN MODE: Diskusi, Evaluasi, dan Perbaikan Bug
+      // Jika admin memberikan perintah perbaikan/instruksi baru, simpan otomatis ke Knowledge Base!
+      if (lowerMsg.includes('perbaiki') || lowerMsg.includes('ubah') || lowerMsg.includes('harus') || lowerMsg.includes('tambahkan') || lowerMsg.includes('jangan')) {
+        await supabase.from('knowledge_base').insert([
+          {
+            title: `Instruksi Admin: ${message.slice(0, 20)}...`,
+            content: message
+          }
+        ]);
       }
+
+      prompt = `
+      Anda adalah AI Assistant & Debugger cerdas untuk sistem manajemen pusat kontrol TECNO Jogja.
+      Admin sedang berdiskusi dengan Anda untuk melatih atau memperbaiki perilaku AI.
+      
+      Daftar Knowledge Base saat ini (${knowledgeList?.length || 0} aturan terdaftar):
+      ${rulesContext}
+
+      Pesan dari Admin: "${message}"
+
+      Instruksi: Berikan respons sebagai AI yang kooperatif, ramah, dan profesional. Konfirmasikan apakah Anda telah memahami instruksi atau perbaikan bug tersebut, dan jelaskan bagaimana perubahan ini akan diterapkan pada mode User.
+      `;
+    } else {
+      // 👤 USER MODE: Simulasi Customer Chat
+      prompt = `
+      Anda adalah Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah, informatif, dan menggunakan bahasa Indonesia yang baik (panggil pelanggan dengan sapaan "Kak" jika relevan).
+      
+      PENTING: Anda WAJIB mematuhi dan menggunakan panduan/aturan berikut yang telah ditetapkan oleh Admin di Knowledge Base:
+      ${rulesContext}
+
+      Pesan dari Customer: "${message}"
+
+      Instruksi: Jawablah pertanyaan customer tersebut secara natural dengan mengacu pada aturan Knowledge Base di atas.
+      `;
     }
 
-    if (matchedRule) {
-      finalReply = `Halo Kak! 😊 ${matchedRule}`;
-    } else if (lowerMsg.includes('hallo') || lowerMsg.includes('halo') || lowerMsg.includes('pagi') || lowerMsg.includes('siang') || lowerMsg.includes('malam')) {
-      finalReply = `Halo Kak! Selamat datang di TECNO Official Store Jogja. Ada yang bisa kami bantu mengenai produk HP TECNO hari ini? 😊`;
-    } else {
-      finalReply = `Terima kasih sudah menghubungi TECNO Jogja Kak. Boleh diinfokan tipe HP TECNO yang sedang dicari?`;
-    }
+    const result = await model.generateContent(prompt);
+    const responseText = result.response.text();
 
     return NextResponse.json({
-      reply: finalReply,
-      explanation: matchedRule 
-        ? `🧠 **Aturan Terpakai:** "${matchedRule}"` 
-        : `🧠 **Aturan Terpakai:** Sapaan Standar Customer Service.`
+      reply: responseText,
+      explanation: mode === 'admin' 
+        ? `🧠 **Admin Debugger Active:** Berdiskusi langsung dengan AI. Total Knowledge Terdeteksi: ${knowledgeList?.length || 0}`
+        : `🧠 **AI Customer Service:** Merespons berdasarkan ${knowledgeList?.length || 0} aturan Knowledge Base aktif.`,
+      currentKnowledgeCount: knowledgeList?.length || 0
     });
 
   } catch (err: any) {
-    return NextResponse.json({ reply: 'Sistem mengalami kendala koneksi.', explanation: err.message });
+    console.error('Simulate API Error:', err);
+    return NextResponse.json({ 
+      reply: 'Maaf, terjadi kendala saat memproses komunikasi dengan AI.', 
+      explanation: err.message 
+    }, { status: 500 });
   }
 }
