@@ -1,6 +1,10 @@
 import { NextResponse } from 'next/server';
-// Impor db / prisma instance kamu di sini, contoh:
-// import { db } from '@/lib/db'; 
+import { createClient } from '@supabase/supabase-js';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 export async function POST(req: Request) {
   try {
@@ -8,41 +12,42 @@ export async function POST(req: Request) {
     const { message, mediaUrl, mediaType } = body;
 
     if (!message && !mediaUrl) {
-      return NextResponse.json(
-        { success: false, error: 'Pesan instruksi tidak boleh kosong' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'Pesan instruksi atau media wajib diisi.' }, { status: 400 });
     }
 
-    // 1. SIMPAN KE DATABASE KNOWLEDGE / TRAINING LOG
-    // Contoh jika memakai Prisma/DB:
-    /*
-    const savedKnowledge = await db.knowledge.create({
-      data: {
-        title: message.substring(0, 30) + '...',
-        content: message,
-        mediaUrl: mediaUrl || null,
-        mediaType: mediaType || null,
-      }
-    });
-    */
+    const titleText = message ? (message.length > 30 ? message.slice(0, 30) + '...' : message) : `Media ${mediaType}`;
+    let fullContent = message || '';
 
-    // 2. FORMULASIKAN PENJELASAN AI (UNDERSTANDING)
-    const aiUnderstanding = `AI telah mempelajari dan mengaktifkan aturan baru ini: "${message}"${
-      mediaUrl ? ` beserta lampiran media (${mediaType}).` : '.'
-    }`;
+    if (mediaUrl) {
+      fullContent += `\n\n[Lampiran ${mediaType || 'Media'}]: ${mediaUrl}`;
+    }
 
-    // 3. RETURN RESPONSE HARUS SESUAI DENGAN PROPERTY YANG DIPANGGUL FRONTEND
+    // SIMPAN LANGSUNG KE TABEL KNOWLEDGE_BASE SUPABASE
+    const { data, error } = await supabase
+      .from('knowledge_base')
+      .insert([
+        {
+          title: titleText,
+          content: fullContent,
+        }
+      ])
+      .select();
+
+    if (error) {
+      console.error('Database Error:', error);
+      return NextResponse.json({ success: false, error: 'Gagal menyimpan ke Knowledge Base: ' + error.message }, { status: 500 });
+    }
+
+    const aiUnderstanding = `AI berhasil mengindeks dan memahami aturan baru: "${titleText}". Aturan ini aktif di Knowledge Base.`;
+
     return NextResponse.json({
       success: true,
-      message: 'Aturan & Knowledge AI berhasil diperbarui!',
-      understanding: aiUnderstanding,
+      data: data[0],
+      message: `✅ Aturan Baru Berhasil Disimpan ke Knowledge Base!`,
+      understanding: aiUnderstanding
     });
-  } catch (error: any) {
-    console.error('Error saving training:', error);
-    return NextResponse.json(
-      { success: false, error: 'Gagal menyimpan training ke database' },
-      { status: 500 }
-    );
+
+  } catch (err: any) {
+    return NextResponse.json({ success: false, error: err.message }, { status: 500 });
   }
 }
