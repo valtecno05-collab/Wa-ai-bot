@@ -9,7 +9,7 @@ export default function TrainingPage() {
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
-  // Pop-up State (Soft 3D Popup Style)
+  // Pop-up State
   const [popup, setPopup] = useState<{
     show: boolean;
     type: 'success' | 'error';
@@ -22,16 +22,15 @@ export default function TrainingPage() {
     message: '',
   });
 
-  // Live Uji Coba Chat State
-  const [testInput, setTestInput] = useState('');
+  // Live Chat Logs State
   const [chatLogs, setChatLogs] = useState<any[]>([
     { sender: 'ai', text: 'Sistem Training AI Aktif. Silakan uji coba aturan baru di sini.', explanation: '' }
   ]);
+  const [testInput, setTestInput] = useState('');
   const [isTesting, setIsTesting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Handle Pilih File Gambar/Video
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -45,7 +44,7 @@ export default function TrainingPage() {
     }
   };
 
-  // Simpan Training & Tampilkan Popup 3D
+  // Simpan Training Ke Pusat Kontrol AI
   const handleSaveTraining = async () => {
     if (!instruction.trim() && !selectedFile) {
       setPopup({
@@ -78,21 +77,25 @@ export default function TrainingPage() {
       const data = await res.json();
 
       if (data.success) {
-        // Tampilkan Popup Success
+        // Tampilkan Popup Sukses Soft 3D
         setPopup({
           show: true,
           type: 'success',
           title: 'Success!',
-          message: 'Instruksi AI berhasil disimpan ke database dan langsung dipahami.'
+          message: 'Instruksi AI berhasil disimpan ke Knowledge & Pusat Kontrol.'
         });
 
-        // Tambah log ke live test
+        // Ambil text penjelasan dari backend (cegah undefined)
+        const understandingText = data.understanding || data.message || 'Instruksi baru berhasil dipahami oleh sistem.';
+        const responseText = data.message || 'Training AI Berhasil Diproses.';
+
+        // Tambahkan Log ke Uji Coba Real-Time
         setChatLogs(prev => [
           ...prev,
           {
             sender: 'ai',
-            text: data.message,
-            explanation: `🧠 **Penjelasan AI (Real-Time):**\n${data.understanding}`
+            text: responseText,
+            explanation: `🧠 **Penjelasan AI (Real-Time):**\n${understandingText}`
           }
         ]);
 
@@ -141,7 +144,11 @@ export default function TrainingPage() {
 
       setChatLogs([
         ...newLogs,
-        { sender: 'ai', text: data.reply, explanation: data.explanation }
+        { 
+          sender: 'ai', 
+          text: data.reply || 'Respon AI diproses.', 
+          explanation: data.explanation ? `🧠 **Penjelasan AI (Real-Time):**\n${data.explanation}` : '' 
+        }
       ]);
     } catch (err) {
       setChatLogs([
@@ -156,7 +163,7 @@ export default function TrainingPage() {
   return (
     <div className="space-y-6 max-w-4xl mx-auto font-sans p-4 relative">
       
-      {/* 3D POPUP MODAL (Sesuai Desain Gambar) */}
+      {/* 3D POPUP MODAL */}
       {popup.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl relative border border-slate-100 flex flex-col items-center">
@@ -189,13 +196,12 @@ export default function TrainingPage() {
         </div>
       )}
 
-      {/* BOX INPUT TRAINING LIQUID GLASS DARK STYLE */}
+      {/* INPUT TRAINING LIQUID GLASS DARK STYLE */}
       <div className="space-y-3">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           📝 Input Instruksi Training AI
         </h2>
 
-        {/* Input Container Style Chat Dark Bar */}
         <div className="bg-[#1E252B] rounded-[28px] p-4 shadow-xl border border-slate-700/50 backdrop-blur-md flex flex-col justify-between min-h-[140px]">
           
           <textarea
@@ -206,7 +212,6 @@ export default function TrainingPage() {
             className="w-full bg-transparent text-slate-100 text-sm placeholder-slate-400 focus:outline-none resize-none px-1"
           />
 
-          {/* Media Preview inside Chatbox */}
           {filePreview && (
             <div className="mb-2 p-1.5 bg-slate-800/80 rounded-2xl w-fit border border-slate-600">
               {mediaType === 'image' ? (
@@ -217,7 +222,6 @@ export default function TrainingPage() {
             </div>
           )}
 
-          {/* Hidden File Input */}
           <input
             type="file"
             ref={fileInputRef}
@@ -226,22 +230,16 @@ export default function TrainingPage() {
             className="hidden"
           />
 
-          {/* Bottom Controls Bar */}
           <div className="flex items-center justify-between pt-2">
-            
-            {/* Pill My reply */}
             <span className="bg-slate-800/80 text-slate-300 text-xs font-medium px-4 py-1.5 rounded-full border border-slate-600/50 hover:bg-slate-700 cursor-pointer">
               My reply
             </span>
 
-            {/* Action Icons & Round Submit Button */}
             <div className="flex items-center gap-3">
-              {/* Sticker Icon */}
               <button className="text-slate-400 hover:text-slate-200 transition-colors text-lg p-1">
                 😊
               </button>
 
-              {/* Attachment Clip Icon */}
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 className="text-slate-400 hover:text-slate-200 transition-colors p-1"
@@ -250,7 +248,6 @@ export default function TrainingPage() {
                 📎
               </button>
 
-              {/* Camera Icon */}
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 className="text-slate-400 hover:text-slate-200 transition-colors p-1"
@@ -259,7 +256,6 @@ export default function TrainingPage() {
                 📷
               </button>
 
-              {/* Circular Send / Mic Style Button */}
               <button
                 onClick={handleSaveTraining}
                 disabled={isSaving}
@@ -273,7 +269,7 @@ export default function TrainingPage() {
         </div>
       </div>
 
-      {/* BOX LIVE UJI COBA AI */}
+      {/* LIVE UJI COBA AI */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           🧪 Live Uji Coba AI (Real-Time Test)
@@ -292,7 +288,6 @@ export default function TrainingPage() {
                 {log.text}
               </div>
 
-              {/* Real-time Explanation */}
               {log.explanation && (
                 <div className="mt-1 bg-amber-50 border border-amber-200 text-amber-900 text-[11px] p-2.5 rounded-xl max-w-[85%] font-medium leading-relaxed shadow-2xs">
                   {log.explanation}
@@ -305,7 +300,6 @@ export default function TrainingPage() {
           )}
         </div>
 
-        {/* Input Uji Coba */}
         <div className="flex gap-2">
           <input
             type="text"
