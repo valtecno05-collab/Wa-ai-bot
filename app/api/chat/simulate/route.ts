@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || ''
 );
 
-const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || '';
+const groqApiKey = process.env.GROQ_API_KEY || '';
 
 export async function POST(req: Request) {
   try {
@@ -25,17 +25,17 @@ export async function POST(req: Request) {
       ? knowledgeList.map((k) => `- [${k.title}]: ${k.content}`).join('\n')
       : 'Belum ada aturan khusus.';
 
-    if (!apiKey) {
+    if (!groqApiKey) {
       return NextResponse.json({
-        reply: '⚠️ GEMINI_API_KEY belum dikonfigurasi di Environment Variables.',
+        reply: '⚠️ GROQ_API_KEY belum dikonfigurasi di Environment Variables Vercel.',
         explanation: 'API Key Kosong'
       });
     }
 
-    let prompt = '';
+    let systemPrompt = '';
 
     if (mode === 'admin') {
-      // Simpan otomatis jika admin memberikan instruksi baru
+      // Simpan otomatis jika admin memberikan instruksi perbaikan/knowledge baru
       if (
         lowerMsg.includes('jawab') || 
         lowerMsg.includes('perbaiki') || 
@@ -52,49 +52,50 @@ export async function POST(req: Request) {
         ]);
       }
 
-      prompt = `
+      systemPrompt = `
       Anda adalah AI Assistant & Debugger cerdas untuk sistem TECNO Jogja.
       Admin sedang berdiskusi dengan Anda untuk menginstruksikan atau memperbaiki aturan balasan AI.
       
       Daftar Knowledge Base saat ini (${knowledgeList?.length || 0} aturan):
       ${rulesContext}
 
-      Pesan dari Admin: "${message}"
-
-      Instruksi: Tanggapi pesan Admin dengan singkat, ramah, dan konfirmasikan bahwa instruksi tersebut dipahami dan sudah/akan diterapkan pada mode User.
+      Tanggapi pesan Admin dengan singkat, ramah, dan konfirmasikan bahwa instruksi tersebut dipahami dan sudah tersimpan di Knowledge Base.
       `;
     } else {
-      prompt = `
+      systemPrompt = `
       Anda adalah Customer Service resmi TECNO Official Store Jogja yang melayani pelanggan dengan ramah (sapa pelanggan dengan sapaan "Kak").
       
       Aturan & Informasi Wajib dari Knowledge Base:
       ${rulesContext}
 
-      Pesan dari Customer: "${message}"
-
-      Instruksi: Jawab pertanyaan customer berdasarkan aturan Knowledge Base di atas secara natural.
+      Jawab pertanyaan customer berdasarkan aturan Knowledge Base di atas secara natural dan profesional.
       `;
     }
 
-    // 2. Panggil API Gemini via HTTP Fetch Native (Tanpa butuh library npm)
-    const geminiResponse = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      }
-    );
+    // 2. Panggil Groq API via HTTP Native Fetch (Sangat stabil & Cepat)
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${groqApiKey}`
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: message }
+        ],
+        temperature: 0.7
+      })
+    });
 
-    const resultData = await geminiResponse.json();
+    const resultData = await groqResponse.json();
 
-    if (!geminiResponse.ok) {
-      throw new Error(resultData.error?.message || 'Gagal terhubung ke Gemini API');
+    if (!groqResponse.ok) {
+      throw new Error(resultData.error?.message || 'Gagal terhubung ke Groq AI');
     }
 
-    const responseText = resultData.candidates?.[0]?.content?.parts?.[0]?.text || 'Tidak ada tanggapan dari AI.';
+    const responseText = resultData.choices?.[0]?.message?.content || 'Tidak ada response dari AI.';
 
     return NextResponse.json({
       reply: responseText,
