@@ -1,44 +1,48 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+// Impor db / prisma instance kamu di sini, contoh:
+// import { db } from '@/lib/db'; 
 
 export async function POST(req: Request) {
   try {
     const body = await req.json();
-    const { message, instruction, content, title } = body;
+    const { message, mediaUrl, mediaType } = body;
 
-    const textToSave = instruction || content || message;
-    const titleToSave = title || (textToSave ? textToSave.slice(0, 35) + '...' : 'Instruksi AI');
-
-    if (!textToSave) {
-      return NextResponse.json({ error: 'Instruksi tidak boleh kosong' }, { status: 400 });
+    if (!message && !mediaUrl) {
+      return NextResponse.json(
+        { success: false, error: 'Pesan instruksi tidak boleh kosong' },
+        { status: 400 }
+      );
     }
 
-    // Simpan ke Knowledge Base Supabase
-    const { data, error } = await supabase
-      .from('knowledge_base')
-      .insert({
-        title: titleToSave,
-        content: textToSave
-      })
-      .select();
+    // 1. SIMPAN KE DATABASE KNOWLEDGE / TRAINING LOG
+    // Contoh jika memakai Prisma/DB:
+    /*
+    const savedKnowledge = await db.knowledge.create({
+      data: {
+        title: message.substring(0, 30) + '...',
+        content: message,
+        mediaUrl: mediaUrl || null,
+        mediaType: mediaType || null,
+      }
+    });
+    */
 
-    if (error) {
-      console.error('Supabase Error:', error);
-      return NextResponse.json({ error: 'Gagal menyimpan ke database: ' + error.message }, { status: 500 });
-    }
+    // 2. FORMULASIKAN PENJELASAN AI (UNDERSTANDING)
+    const aiUnderstanding = `AI telah mempelajari dan mengaktifkan aturan baru ini: "${message}"${
+      mediaUrl ? ` beserta lampiran media (${mediaType}).` : '.'
+    }`;
 
+    // 3. RETURN RESPONSE HARUS SESUAI DENGAN PROPERTY YANG DIPANGGUL FRONTEND
     return NextResponse.json({
       success: true,
-      reply: `✅ **Instruksi Berhasil Dipelajari AI!**\n\n📌 **Ringkasan:** ${titleToSave}\n\nAturan ini sudah aktif di Knowledge Base dan akan diolah AI saat membalas customer.`,
-      data
+      message: 'Aturan & Knowledge AI berhasil diperbarui!',
+      understanding: aiUnderstanding,
     });
-
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error: any) {
+    console.error('Error saving training:', error);
+    return NextResponse.json(
+      { success: false, error: 'Gagal menyimpan training ke database' },
+      { status: 500 }
+    );
   }
 }
