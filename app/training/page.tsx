@@ -1,44 +1,127 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 
 export default function TrainingPage() {
   const [instruction, setInstruction] = useState('');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-  
-  // State untuk Live Uji Coba AI
+
+  // Pop-up State (Soft 3D Popup Style)
+  const [popup, setPopup] = useState<{
+    show: boolean;
+    type: 'success' | 'error';
+    title: string;
+    message: string;
+  }>({
+    show: false,
+    type: 'success',
+    title: '',
+    message: '',
+  });
+
+  // Live Uji Coba Chat State
   const [testInput, setTestInput] = useState('');
   const [chatLogs, setChatLogs] = useState<any[]>([
     { sender: 'ai', text: 'Sistem Training AI Aktif. Silakan uji coba aturan baru di sini.', explanation: '' }
   ]);
   const [isTesting, setIsTesting] = useState(false);
 
-  // Fungsi Simpan Training
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Handle Pilih File Gambar/Video
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
+      setFilePreview(URL.createObjectURL(file));
+      if (file.type.startsWith('image/')) {
+        setMediaType('image');
+      } else if (file.type.startsWith('video/')) {
+        setMediaType('video');
+      }
+    }
+  };
+
+  // Simpan Training & Tampilkan Popup 3D
   const handleSaveTraining = async () => {
-    if (!instruction.trim()) return alert('Ketik instruksi training terlebih dahulu.');
+    if (!instruction.trim() && !selectedFile) {
+      setPopup({
+        show: true,
+        type: 'error',
+        title: 'Error!',
+        message: 'Mohon ketik instruksi atau pilih media terlebih dahulu.'
+      });
+      return;
+    }
+
     setIsSaving(true);
 
     try {
+      let mediaUrl = '';
+      if (selectedFile) {
+        mediaUrl = `https://storage.tecno.id/${selectedFile.name}`;
+      }
+
       const res = await fetch('/api/admin/training', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: instruction }),
+        body: JSON.stringify({
+          message: instruction,
+          mediaUrl: mediaUrl,
+          mediaType: mediaType
+        }),
       });
+
       const data = await res.json();
+
       if (data.success) {
-        alert('✅ Instruksi berhasil disimpan ke Knowledge Base!');
+        // Tampilkan Popup Success
+        setPopup({
+          show: true,
+          type: 'success',
+          title: 'Success!',
+          message: 'Instruksi AI berhasil disimpan ke database dan langsung dipahami.'
+        });
+
+        // Tambah log ke live test
+        setChatLogs(prev => [
+          ...prev,
+          {
+            sender: 'ai',
+            text: data.message,
+            explanation: `🧠 **Penjelasan AI (Real-Time):**\n${data.understanding}`
+          }
+        ]);
+
+        // Reset Form
         setInstruction('');
+        setSelectedFile(null);
+        setFilePreview(null);
+        setMediaType(null);
       } else {
-        alert('Gagal: ' + data.error);
+        setPopup({
+          show: true,
+          type: 'error',
+          title: 'Error!',
+          message: data.error || 'Terjadi kesalahan saat menyimpan ke database.'
+        });
       }
     } catch (err) {
-      alert('Terjadi kendala koneksi');
+      setPopup({
+        show: true,
+        type: 'error',
+        title: 'Error!',
+        message: 'Gagal menghubungkan ke server. Silakan coba lagi.'
+      });
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Fungsi Live Uji Coba AI
+  // Live Uji Coba AI
   const handleTestAI = async () => {
     if (!testInput.trim()) return;
 
@@ -63,7 +146,7 @@ export default function TrainingPage() {
     } catch (err) {
       setChatLogs([
         ...newLogs,
-        { sender: 'ai', text: 'Maaf, gagal memproses balasan uji coba.', explanation: '' }
+        { sender: 'ai', text: 'Maaf, terjadi kendala saat memproses balasan uji coba.', explanation: '' }
       ]);
     } finally {
       setIsTesting(false);
@@ -71,27 +154,126 @@ export default function TrainingPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto font-sans p-4">
-      {/* Box Input Training */}
-      <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-        <h2 className="text-sm font-bold text-slate-800">📝 Input Instruksi Training</h2>
-        <textarea
-          rows={4}
-          value={instruction}
-          onChange={(e) => setInstruction(e.target.value)}
-          placeholder="Ketik instruksi atau aturan di sini... (Contoh: Jika ditanya garansi, jawab garansi resmi TECNO 13 bulan)"
-          className="w-full bg-slate-50 border border-slate-200 rounded-2xl p-3 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
-        />
-        <button
-          onClick={handleSaveTraining}
-          disabled={isSaving}
-          className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-2xl text-xs transition-all shadow-md"
-        >
-          {isSaving ? 'Menyimpan & Melatih AI...' : '🚀 Simpan & Terapkan Ke AI'}
-        </button>
+    <div className="space-y-6 max-w-4xl mx-auto font-sans p-4 relative">
+      
+      {/* 3D POPUP MODAL (Sesuai Desain Gambar) */}
+      {popup.show && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fade-in">
+          <div className="bg-white rounded-3xl p-6 w-full max-w-sm text-center shadow-2xl relative border border-slate-100 flex flex-col items-center">
+            
+            {/* Circle Badge Icon */}
+            {popup.type === 'success' ? (
+              <div className="w-16 h-16 bg-blue-500 text-white rounded-full flex items-center justify-center text-3xl shadow-lg shadow-blue-300 -mt-12 mb-4 border-4 border-white">
+                ✓
+              </div>
+            ) : (
+              <div className="w-16 h-16 bg-rose-400 text-white rounded-full flex items-center justify-center text-3xl shadow-lg shadow-rose-200 -mt-12 mb-4 border-4 border-white">
+                ✕
+              </div>
+            )}
+
+            <h3 className="text-xl font-bold text-slate-800 mb-1">{popup.title}</h3>
+            <p className="text-xs text-slate-500 mb-6 leading-relaxed px-2">{popup.message}</p>
+
+            <button
+              onClick={() => setPopup({ ...popup, show: false })}
+              className={`w-full py-3 rounded-full text-xs font-bold text-white shadow-md transition-transform active:scale-95 ${
+                popup.type === 'success'
+                  ? 'bg-gradient-to-r from-cyan-400 to-blue-500 hover:from-cyan-500 hover:to-blue-600 shadow-blue-200'
+                  : 'bg-gradient-to-r from-rose-400 to-red-500 hover:from-rose-500 hover:to-red-600 shadow-rose-200'
+              }`}
+            >
+              {popup.type === 'success' ? 'Continue' : 'Try again'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* BOX INPUT TRAINING LIQUID GLASS DARK STYLE */}
+      <div className="space-y-3">
+        <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
+          📝 Input Instruksi Training AI
+        </h2>
+
+        {/* Input Container Style Chat Dark Bar */}
+        <div className="bg-[#1E252B] rounded-[28px] p-4 shadow-xl border border-slate-700/50 backdrop-blur-md flex flex-col justify-between min-h-[140px]">
+          
+          <textarea
+            rows={3}
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            placeholder="Message..."
+            className="w-full bg-transparent text-slate-100 text-sm placeholder-slate-400 focus:outline-none resize-none px-1"
+          />
+
+          {/* Media Preview inside Chatbox */}
+          {filePreview && (
+            <div className="mb-2 p-1.5 bg-slate-800/80 rounded-2xl w-fit border border-slate-600">
+              {mediaType === 'image' ? (
+                <img src={filePreview} alt="Preview" className="h-20 rounded-xl object-cover" />
+              ) : (
+                <video src={filePreview} className="h-20 rounded-xl" />
+              )}
+            </div>
+          )}
+
+          {/* Hidden File Input */}
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleFileChange}
+            accept="image/*,video/*"
+            className="hidden"
+          />
+
+          {/* Bottom Controls Bar */}
+          <div className="flex items-center justify-between pt-2">
+            
+            {/* Pill My reply */}
+            <span className="bg-slate-800/80 text-slate-300 text-xs font-medium px-4 py-1.5 rounded-full border border-slate-600/50 hover:bg-slate-700 cursor-pointer">
+              My reply
+            </span>
+
+            {/* Action Icons & Round Submit Button */}
+            <div className="flex items-center gap-3">
+              {/* Sticker Icon */}
+              <button className="text-slate-400 hover:text-slate-200 transition-colors text-lg p-1">
+                😊
+              </button>
+
+              {/* Attachment Clip Icon */}
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-slate-400 hover:text-slate-200 transition-colors p-1"
+                title="Lampirkan File/Media"
+              >
+                📎
+              </button>
+
+              {/* Camera Icon */}
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                className="text-slate-400 hover:text-slate-200 transition-colors p-1"
+                title="Ambil/Pilih Gambar"
+              >
+                📷
+              </button>
+
+              {/* Circular Send / Mic Style Button */}
+              <button
+                onClick={handleSaveTraining}
+                disabled={isSaving}
+                className="w-10 h-10 rounded-full bg-slate-200 hover:bg-white text-slate-900 flex items-center justify-center font-bold shadow-md transition-all active:scale-90"
+                title="Simpan & Terapkan"
+              >
+                {isSaving ? '⌛' : '🚀'}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Box Live Uji Coba AI */}
+      {/* BOX LIVE UJI COBA AI */}
       <div className="bg-white p-5 rounded-3xl border border-slate-200 shadow-sm space-y-4">
         <h2 className="text-sm font-bold text-slate-800 flex items-center gap-2">
           🧪 Live Uji Coba AI (Real-Time Test)
@@ -110,9 +292,9 @@ export default function TrainingPage() {
                 {log.text}
               </div>
 
-              {/* Penjelasan Real-Time Aturan yang Dipahami AI */}
+              {/* Real-time Explanation */}
               {log.explanation && (
-                <div className="mt-1 bg-amber-50 border border-amber-200 text-amber-800 text-[10px] p-2 rounded-xl max-w-[85%] font-medium shadow-2xs">
+                <div className="mt-1 bg-amber-50 border border-amber-200 text-amber-900 text-[11px] p-2.5 rounded-xl max-w-[85%] font-medium leading-relaxed shadow-2xs">
                   {log.explanation}
                 </div>
               )}
@@ -141,6 +323,7 @@ export default function TrainingPage() {
           </button>
         </div>
       </div>
+
     </div>
   );
 }
